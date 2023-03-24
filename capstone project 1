@@ -155,11 +155,13 @@ def scrape_and_save_tweets(keyword, start_date, end_date, tweet_count):
             "Reply Count", 
             "Retweet Count", 
             "Language", 
-            "Source",
-            "Keyword"
+            "Source"
         ]
     )
-    collection.insert_many(tweets_df.to_dict("records"))
+    tweets_dict = tweets_df.to_dict("records")
+    for tweet in tweets_dict:
+        tweet["Keyword"] = keyword
+    collection.insert_many(tweets_dict)
     return tweets_df
 
 
