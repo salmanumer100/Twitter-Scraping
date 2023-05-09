@@ -1,0 +1,100 @@
+
+import streamlit as st
+import snscrape.modules.twitter as sntwitter
+import pandas as pd
+import base64
+import snscrape.modules.twitter as sntwitter
+import json
+import pymongo
+import datetime
+
+
+
+# Define a function to scrape Twitter data
+def scrape_tweets(search_term, start_date, end_date, limit):
+    # Set up a list to hold the tweets
+    tweets_list = []
+
+    # Use snscrape to scrape tweets with the given search term and date range
+    for i, tweet in enumerate(sntwitter.TwitterSearchScraper(f"{search_term} since:{start_date} until:{end_date}").get_items()):
+        # If we have scraped the desired number of tweets, break out of the loop
+        if i >= limit:
+            break
+
+        # Extract the relevant information from the tweet and append it to the list
+        tweets_list.append({
+            "date": str(tweet.date),
+            "id": str(tweet.id),
+            "content": tweet.content,
+            "username": tweet.user.username,
+            "followers": tweet.user.followersCount,
+            "retweets": tweet.retweetCount,
+            "likes": tweet.likeCount
+        })
+
+    # Return the list of tweets as a JSON string
+    return json.dumps(tweets_list)
+
+# Define a function to store tweets in MongoDB
+def store_tweets_mongodb(scrape_term, tweets):
+    # Connect to MongoDB and get the collection
+    client = pymongo.MongoClient("mongodb+srv://Arshadayub:1234@cluster0.ellzasa.mongodb.net/?retryWrites=true&w=majority")
+    db = client["twitter_scrape"]
+    collection = db["scrape_data"]
+
+    # Insert the tweets as a single document in the collection
+    collection.insert_one({
+        "Scrape Word": scrape_term,
+        "Scraped Date": datetime.datetime.today(),
+        "Scraped Data": [tweets]
+        })
+
+# Define a function to download tweets as a CSV file
+def download_tweets_csv(scrape_term, tweets_json):
+    tweets_df = pd.read_json(tweets_json)
+    csv = tweets_df.to_csv(index=False)
+    b64 = base64.b64encode(csv.encode()).decode()
+    href = f'<a href="data:file/csv;base64,{b64}" download="{scrape_term}.csv">Download CSV file</a>'
+    st.markdown(href, unsafe_allow_html=True)
+    st.dataframe(tweets_df)
+
+# Define a function to download tweets as a JSON file
+def download_tweets_json(search_term, tweets_json):
+    b64 = base64.b64encode(tweets_json.encode()).decode()
+    href = f'<a href="data:file/json;base64,{b64}" download="{search_term}.json">Download JSON file</a>'
+    tweets_df = pd.read_json(tweets_json)
+    st.markdown(href, unsafe_allow_html=True)
+    st.dataframe(tweets_df)
+
+# Define the Streamlit app
+def main():
+    # Set the title and description of the app
+    st.title("Twitter Scraper")
+    st.write("Enter a search term, date range, and limit to scrape Twitter data.")
+
+    # Get the user's input
+    search_term = st.text_input("Search term")
+    start_date = st.date_input("Start date")
+    end_date = st.date_input("End date")
+    limit = st.number_input("Limit", min_value=1, max_value=1000, value=100)
+
+    # Scrape the tweets and display them in a table
+    if st.button("Scrape"):
+        tweets_json = scrape_tweets(search_term, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), limit)
+        tweets_df = pd.read_json(tweets_json)
+        st.dataframe(tweets_df)
+
+    # Store the tweets in MongoDB
+    if st.button("Store in MongoDB"):
+        tweets_json = scrape_tweets(search_term, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), limit)
+        store_tweets_mongodb(search_term, tweets_json)
+
+    if st.button("Download to CSV"):
+        tweets_json = scrape_tweets(search_term, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), limit)
+        download_tweets_csv(search_term, tweets_json)
+
+    if st.button("Download to JSON"):
+        tweets_json = scrape_tweets(search_term, start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d'), limit)
+        download_tweets_json(search_term, tweets_json)
+
+main()
